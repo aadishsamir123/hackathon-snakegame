@@ -483,9 +483,11 @@
       let currentDifficulty = "medium";
       let animationFrame = 0;
       let particles = [];
-      let gameState = "menu"; // "menu", "levelSelect", "countdown", "playing", "gameOver"
+      let gameState = "menu"; // "menu", "levelSelect", "countdown", "playing", "gameOver", "paused"
       let selectedStartLevel = 1;
       let maxUnlockedLevel = 1;
+      let isDead = false;
+      let deathPauseTime = 0;
 
       // Smooth movement variables
       let snakePositions = [];
@@ -615,16 +617,20 @@
         let countdown = 3;
         const countdownNumber = document.getElementById("countdownNumber");
 
+        // Show the first number immediately
+        countdownNumber.textContent = countdown;
+        countdownNumber.style.animation = "countdownPulse 1s ease-in-out";
+        countdown--;
+
         const countdownInterval = setInterval(() => {
-          countdownNumber.textContent = countdown;
-          countdownNumber.style.animation = "none";
-          setTimeout(() => {
-            countdownNumber.style.animation = "countdownPulse 1s ease-in-out";
-          }, 10);
-
-          countdown--;
-
-          if (countdown < 0) {
+          if (countdown >= 0) {
+            countdownNumber.textContent = countdown;
+            countdownNumber.style.animation = "none";
+            setTimeout(() => {
+              countdownNumber.style.animation = "countdownPulse 1s ease-in-out";
+            }, 10);
+            countdown--;
+          } else {
             clearInterval(countdownInterval);
             countdownScreen.style.display = "none";
             startGame();
@@ -671,6 +677,8 @@
         powerUp = null;
         particles = [];
         animationFrame = 0;
+        isDead = false;
+        deathPauseTime = 0;
 
         // Reset smooth movement variables
         snakePositions = [...snake];
@@ -810,7 +818,14 @@
       }
 
       function gameLoop(currentTime) {
-        if (currentTime - lastMoveTime >= speed) {
+        if (isDead) {
+          // Handle death pause
+          if (currentTime - deathPauseTime >= 1500) {
+            // 1.5 second pause
+            endGame();
+            return;
+          }
+        } else if (currentTime - lastMoveTime >= speed) {
           update();
           lastMoveTime = currentTime;
         }
@@ -819,6 +834,8 @@
       }
 
       function update() {
+        if (isDead) return; // Don't update if dead
+
         // Snake movement logic
         let headX = snake[0].x;
         let headY = snake[0].y;
@@ -828,7 +845,7 @@
         if (direction === "UP") headY -= box;
         if (direction === "DOWN") headY += box;
 
-        // Game Over conditions
+        // Game Over conditions - but now we pause and push back
         if (
           headX < 0 ||
           headX >= canvas.width ||
@@ -837,7 +854,31 @@
           collision(headX, headY, snake) ||
           collision(headX, headY, obstacles)
         ) {
-          endGame();
+          // Push snake back one square
+          let pushBackX = snake[0].x;
+          let pushBackY = snake[0].y;
+
+          if (direction === "LEFT") pushBackX += box;
+          if (direction === "RIGHT") pushBackX -= box;
+          if (direction === "UP") pushBackY += box;
+          if (direction === "DOWN") pushBackY -= box;
+
+          // Update snake head position to pushed back position
+          snake[0].x = pushBackX;
+          snake[0].y = pushBackY;
+
+          // Mark as dead and start death timer
+          isDead = true;
+          deathPauseTime = performance.now();
+
+          // Create explosion particles at death location
+          for (let i = 0; i < 20; i++) {
+            createParticle(
+              snake[0].x + Math.random() * box,
+              snake[0].y + Math.random() * box,
+              "#ff0000"
+            );
+          }
           return;
         }
 
@@ -1088,22 +1129,10 @@
         gameState = "gameOver";
         cancelAnimationFrame(game);
 
-        // Create explosion particles
-        for (let i = 0; i < 30; i++) {
-          createParticle(
-            snake[0].x + Math.random() * box,
-            snake[0].y + Math.random() * box,
-            "#ff0000"
-          );
-        }
-
         finalScoreText.textContent = "Your Score: " + score;
         levelReachedText.textContent = "Level Reached: " + level;
 
-        // Delay showing game over screen for explosion effect
-        setTimeout(() => {
-          gameOverScreen.style.display = "block";
-        }, 500);
+        gameOverScreen.style.display = "block";
       }
 
       function restartGame() {
